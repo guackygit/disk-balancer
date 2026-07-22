@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Disc Balance</title>
+<title>Wheel Balance</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#14171A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Wheel Balance">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -293,6 +300,12 @@
   .print-page td{ padding:6px 6px; border-bottom:1px solid var(--p-border); color: var(--p-text); }
   .print-page .pp-chart-title{ font-size:13px; font-weight:600; margin: 22px 0 4px; color: var(--p-text); }
   .print-page .pp-footer{ margin-top:22px; font-size:10px; color: var(--p-faint); text-align:center; }
+  .print-page .pp-chart-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 18px 14px; margin-top:10px; }
+  .print-page .pp-chart-cell{ border:1px solid var(--p-border); border-radius:8px; padding:10px 8px 6px; }
+  .print-page .pp-chart-cell .pp-chart-cap{ text-align:center; font-size:11px; font-weight:600; margin-bottom:4px; }
+  .print-page .pp-chart-cell .pp-chart-score{ text-align:center; font-size:10px; color:var(--p-dim); margin-bottom:6px; }
+  .print-page table.compare-table th, .print-page table.compare-table td{ font-size:10.5px; }
+  .print-page table.compare-table .method-score{ display:block; font-size:9px; color:var(--p-faint); font-weight:400; text-transform:none; letter-spacing:0; }
 
   @media print{
     .no-print{ display:none !important; }
@@ -309,14 +322,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
 /* ===================== Version / build info ===================== */
-const APP_VERSION = 'v7';
-const APP_BUILD_DATE = 'Jul 21, 2026 2:55 PM EDT';
+const APP_VERSION = 'v10';
+const APP_BUILD_DATE = 'Jul 22, 2026 2:09 PM EDT';
 
 /* ===================== Constants ===================== */
 const SIZES = {
-  S: { label: 'Small',  count: 25 },
-  M: { label: 'Medium', count: 17 },
-  L: { label: 'Large',  count: 13 }
+  S: { label: '100-150mm', count: 25 },
+  M: { label: '200mm', count: 17 },
+  L: { label: '300mm', count: 13 }
 };
 const METHOD_LABELS = {
   asEntered: 'As Entered',
@@ -546,6 +559,11 @@ function analysesToCsvRows(analyses){
   }
   return rows;
 }
+function filenameTimestamp(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
 function exportCsv(analyses){
   const rows = analysesToCsvRows(analyses);
   const csv = Papa.unparse(rows, { columns: ['analysisId','name','createdAt','size','discCount','chosen','recordType','position','discId','discLabel','discWeight','score'] });
@@ -553,7 +571,7 @@ function exportCsv(analyses){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'disc-balance-analyses.csv';
+  a.download = `wheel-balance-analyses-${filenameTimestamp()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -615,7 +633,7 @@ function importCsvFile(file){
 /* ===================== App state & render ===================== */
 const app = document.getElementById('app');
 let state = {
-  view: 'home',          // home | new | results | settings | help | about | print-single
+  view: 'home',          // home | new | results | settings | help | about | print-single | print-full
   savedList: [],
   draft: null,           // in-progress new analysis (unsaved)
   viewingId: null,       // id of saved analysis currently open
@@ -665,6 +683,7 @@ function render(){
   if(state.view === 'help') return renderHelp();
   if(state.view === 'about') return renderAbout();
   if(state.view === 'print-single') return renderPrintSingle();
+  if(state.view === 'print-full') return renderPrintFull();
 }
 
 /* ---------- Home ---------- */
@@ -691,8 +710,8 @@ function renderHome(){
       <header class="app-header">
         ${ringMarkSvg(13, 40)}
         <div>
-          <h1 class="app-title">Disc Balance</h1>
-          <p class="app-sub">Optimal disc arrangement for smooth rotation</p>
+          <h1 class="app-title">Wheel Balance</h1>
+          <p class="app-sub">Optimal paddle arrangement for smooth rotation</p>
         </div>
       </header>
       <button class="icon-btn" id="btn-settings" aria-label="Settings">${gearSvg()}</button>
@@ -705,14 +724,14 @@ function renderHome(){
     ${list.length === 0 ? `
       <div class="empty">
         <span class="display">No analyses yet</span>
-        Start a new analysis to enter disc weights and calculate a balanced arrangement.
+        Start a new analysis to enter paddle weights and calculate a balanced arrangement.
       </div>
     ` : list.map(a => `
       <div class="card analysis-card" data-open="${a.id}">
         <div>
           <p class="analysis-name">${escapeHtml(a.name)}</p>
           <div class="analysis-meta">
-            ${SIZES[a.size].label} &middot; ${a.discCount} discs<br>
+            ${SIZES[a.size].label} &middot; ${a.discCount} paddles<br>
             ${fmtDate(a.createdAt)}
           </div>
         </div>
@@ -725,7 +744,7 @@ function renderHome(){
       </div>
     `).join('')}
 
-    <div class="footer">Disc Balance ${APP_VERSION} &middot; built ${APP_BUILD_DATE}</div>
+    <div class="footer">Wheel Balance ${APP_VERSION} &middot; built ${APP_BUILD_DATE}</div>
   `;
 
   document.getElementById('btn-settings').onclick = () => { state.view='settings'; render(); };
@@ -797,7 +816,7 @@ function renderSettings(){
     </div>
     <input type="file" id="file-import" accept=".csv,text/csv">
 
-    <div class="footer">Disc Balance ${APP_VERSION} &middot; built ${APP_BUILD_DATE}</div>
+    <div class="footer">Wheel Balance ${APP_VERSION} &middot; built ${APP_BUILD_DATE}</div>
   `;
 
   document.getElementById('btn-back-settings').onclick = () => { state.view='home'; render(); };
@@ -834,22 +853,22 @@ function renderHelp(){
 
     <div class="help-block">
       <h3>What's an imbalance score?</h3>
-      <p>Each disc sits at a fixed slot around the platter. The imbalance score measures how far the combined weight is from being perfectly centered — it adds up every disc's weight, factoring in its position around the ring. A score of 0 would mean perfect balance. Lower is always better, and it's only meaningful when comparing arrangements of the <em>same</em> set of discs.</p>
+      <p>Each paddle sits at a fixed slot around the wafer. The imbalance score measures how far the combined weight is from being perfectly centered — it adds up every paddle's weight, factoring in its position around the ring. A score of 0 would mean perfect balance. Lower is always better, and it's only meaningful when comparing arrangements of the <em>same</em> set of paddles.</p>
     </div>
 
     <div class="help-block">
       <h3>As Entered</h3>
-      <p>This isn't an optimization at all — it's simply the imbalance score if the discs were placed in the exact order you typed them in. It's here as a baseline, so you can see how much the other methods actually improve on a naive, unplanned arrangement.</p>
+      <p>This isn't an optimization at all — it's simply the imbalance score if the paddles were placed in the exact order you typed them in. It's here as a baseline, so you can see how much the other methods actually improve on a naive, unplanned arrangement.</p>
     </div>
 
     <div class="help-block">
       <h3>Heaviest–Lightest Pairing</h3>
-      <p>A fast, simple method: discs are sorted by weight, then spread around the ring so the heaviest and lightest discs land roughly opposite one another. It's the quickest of the three methods and usually gives a reasonable result, though it's rarely the very best possible arrangement.</p>
+      <p>A fast, simple method: paddles are sorted by weight, then spread around the ring so the heaviest and lightest paddles land roughly opposite one another. It's the quickest of the three methods and usually gives a reasonable result, though it's rarely the very best possible arrangement.</p>
     </div>
 
     <div class="help-block">
       <h3>Simulated Annealing</h3>
-      <p>This method starts from an arrangement and repeatedly tries swapping two discs, keeping the swap if it improves balance. Early on, it will also occasionally accept a swap that makes things slightly worse — this helps it avoid getting stuck on a decent-but-not-great arrangement. Over many tries, it settles on a strong result. In testing, this method typically produces the best or near-best score of the three.</p>
+      <p>This method starts from an arrangement and repeatedly tries swapping two paddles, keeping the swap if it improves balance. Early on, it will also occasionally accept a swap that makes things slightly worse — this helps it avoid getting stuck on a decent-but-not-great arrangement. Over many tries, it settles on a strong result. In testing, this method typically produces the best or near-best score of the three.</p>
     </div>
 
     <div class="help-block">
@@ -875,14 +894,14 @@ function renderAbout(){
 
     <div style="text-align:center; margin: 8px 0 24px;">
       ${ringMarkSvg(13, 56)}
-      <h2 class="display" style="font-size:20px; margin: 10px 0 2px;">Disc Balance</h2>
-      <p class="app-sub">Optimal disc arrangement for smooth rotation</p>
+      <h2 class="display" style="font-size:20px; margin: 10px 0 2px;">Wheel Balance</h2>
+      <p class="app-sub">Optimal paddle arrangement for smooth rotation</p>
     </div>
 
     <div class="card">
       <div class="about-row"><span class="k">Version</span><span class="v">${APP_VERSION}</span></div>
       <div class="about-row"><span class="k">Build date</span><span class="v">${APP_BUILD_DATE}</span></div>
-      <div class="about-row"><span class="k">Author</span><span class="v">Franco</span></div>
+      <div class="about-row"><span class="k">Author</span><span class="v">Peter Banks (Ions in Motion)</span></div>
     </div>
 
     <p style="font-size:12px; color:var(--text-faint); margin-top:16px; line-height:1.6;">
@@ -901,7 +920,7 @@ function renderNew(){
       <div><h1 class="app-title" style="font-size:19px;">New Analysis</h1></div>
     </header>
 
-    <div class="section-title">Platter size</div>
+    <div class="section-title">Wafer size</div>
     <div class="size-picker">
       ${Object.keys(SIZES).map(key => `
         <div class="size-btn ${d && d.size===key ? 'active':''}" data-size="${key}">
@@ -914,7 +933,7 @@ function renderNew(){
     ${d ? `
       <div class="field" style="margin-top:20px;">
         <label>Analysis name</label>
-        <input type="text" id="name-input" value="${escapeHtml(d.name)}" placeholder="e.g. Batch 14 platter" enterkeyhint="next">
+        <input type="text" id="name-input" value="${escapeHtml(d.name)}" placeholder="e.g. Batch 14 wafer" enterkeyhint="next">
       </div>
 
       <div class="btn-row mode-toggle">
@@ -930,7 +949,7 @@ function renderNew(){
         <button class="btn" id="btn-cancel" style="flex:1;">Cancel</button>
         <button class="btn btn-primary" id="btn-run" style="flex:2;">Run Analysis</button>
       </div>
-    ` : `<p style="color:var(--text-dim); font-size:13px; margin-top:16px;">Choose a platter size to begin entering disc weights.</p>
+    ` : `<p style="color:var(--text-dim); font-size:13px; margin-top:16px;">Choose a wafer size to begin entering paddle weights.</p>
       <div class="btn-row" style="margin-top:18px;"><button class="btn" id="btn-cancel-early" style="flex:1;">Cancel</button></div>`}
   `;
 
@@ -992,7 +1011,7 @@ function renderStepView(d){
       }).join('')}
     </div>
     <div class="card step-card">
-      <div class="step-counter">Disc ${d.stepIndex + 1} of ${N}</div>
+      <div class="step-counter">Paddle ${d.stepIndex + 1} of ${N}</div>
       <div class="field">
         <label>Weight</label>
         <input type="number" inputmode="decimal" step="any" min="0" id="step-weight"
@@ -1054,7 +1073,7 @@ function advanceStep(d){
 
 function renderTableView(d){
   return `
-    <div class="section-title">Discs (${d.discs.length})</div>
+    <div class="section-title">Paddles (${d.discs.length})</div>
     <div class="card" id="table-card" style="padding:8px 10px;">
       <table>
         <thead><tr>
@@ -1117,7 +1136,7 @@ function runDraft(){
     if(bad && firstInvalid === null) firstInvalid = true;
   });
   if(firstInvalid){
-    d.error = 'Enter a weight greater than 0 for every disc before running the analysis.';
+    d.error = 'Enter a weight greater than 0 for every paddle before running the analysis.';
     d.mode = 'table';
     render();
     return;
@@ -1219,7 +1238,7 @@ function buildSpiderChartSvg(a, method, selectedIdx){
     ${guides}${spokes}${polygon}${dots}
   </svg>
   <div style="text-align:center; font-size:10px; color:var(--text-faint); margin-top:2px;">
-    Inner ring = lightest disc (${minWeight}) &middot; Outer ring = heaviest disc (${maxWeight})
+    Inner ring = lightest paddle (${minWeight}) &middot; Outer ring = heaviest paddle (${maxWeight})
   </div>`;
 }
 function renderChartDetail(a, selectedIdx){
@@ -1289,7 +1308,7 @@ function buildSpiderChartSvgPrint(a, method){
     ${guides}${spokes}${polygon}${dots}
   </svg>
   <div style="text-align:center; font-size:10px; color:var(--p-faint); margin-top:4px;">
-    Inner ring = lightest disc (${minWeight}) &middot; Outer ring = heaviest disc (${maxWeight}) &middot; circles show entry #
+    Inner ring = lightest paddle (${minWeight}) &middot; Outer ring = heaviest paddle (${maxWeight}) &middot; circles show entry #
   </div>`;
 }
 
@@ -1311,9 +1330,9 @@ function renderPrintSingle(){
     </div>
 
     <div class="print-page">
-      <div class="pp-eyebrow">Disc Balance &middot; ${METHOD_LABELS[method]}</div>
+      <div class="pp-eyebrow">Wheel Balance &middot; ${METHOD_LABELS[method]}</div>
       <div class="pp-title">${escapeHtml(a.name)}</div>
-      <div class="pp-sub">${SIZES[a.size].label} platter &middot; ${N} discs &middot; Imbalance score ${res.score.toFixed(3)}</div>
+      <div class="pp-sub">${SIZES[a.size].label} wafer &middot; ${N} paddles &middot; Imbalance score ${res.score.toFixed(3)}</div>
       <div class="pp-meta">
         Analysis created: ${fmtDate(a.createdAt)}<br>
         Printed: ${fmtDate(new Date().toISOString())}
@@ -1345,7 +1364,76 @@ function renderPrintSingle(){
       <div class="pp-chart-title">Arrangement diagram</div>
       ${buildSpiderChartSvgPrint(a, method)}
 
-      <div class="pp-footer">Disc Balance ${APP_VERSION} &middot; generated ${APP_BUILD_DATE}</div>
+      <div class="pp-footer">Wheel Balance ${APP_VERSION} &middot; Peter Banks (Ions in Motion) &middot; generated ${APP_BUILD_DATE}</div>
+    </div>
+  `;
+
+  document.getElementById('btn-print-back').onclick = ()=>{ state.view='results'; render(); };
+  document.getElementById('btn-print-go').onclick = ()=> window.print();
+}
+
+/* ---------- Print: full comparison ---------- */
+function renderPrintFull(){
+  const a = getCurrentAnalysis();
+  if(!a){ state.view='results'; render(); return; }
+  const N = a.discCount;
+  const methods = Object.keys(METHOD_LABELS); // asEntered, pairing, annealing, genetic
+  const resByMethod = {};
+  methods.forEach(m => { resByMethod[m] = getMethodResult(a, m); });
+
+  function cellText(discIdx){
+    const disc = a.discs[discIdx];
+    return disc.label
+      ? `${disc.weight} &mdash; ${escapeHtml(disc.label)}`
+      : `${disc.weight} (#${discIdx+1})`;
+  }
+
+  app.innerHTML = `
+    <div class="print-toolbar no-print">
+      <button class="btn" id="btn-print-back" style="flex:1;">${backArrowSvg()} Back</button>
+      <button class="btn btn-primary" id="btn-print-go" style="flex:2;">Print / Share</button>
+    </div>
+
+    <div class="print-page">
+      <div class="pp-eyebrow">Wheel Balance &middot; Full Comparison</div>
+      <div class="pp-title">${escapeHtml(a.name)}</div>
+      <div class="pp-sub">${SIZES[a.size].label} wafer &middot; ${N} paddles</div>
+      <div class="pp-meta">
+        Analysis created: ${fmtDate(a.createdAt)}<br>
+        Printed: ${fmtDate(new Date().toISOString())}<br>
+        Each cell shows weight &mdash; label (or entry # if unlabeled).
+      </div>
+
+      <table class="compare-table">
+        <thead><tr>
+          <th>Pos</th>
+          <th>Angle</th>
+          ${methods.map(m => `<th>${shortLabel(m)}<span class="method-score">score ${resByMethod[m].score.toFixed(3)}</span></th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${Array.from({length:N}, (_, pos) => {
+            const angle = Math.round(pos * 360 / N);
+            return `<tr>
+              <td>${pos+1}</td>
+              <td>${angle}&deg;</td>
+              ${methods.map(m => `<td>${cellText(resByMethod[m].arrangement[pos])}</td>`).join('')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="pp-chart-title">Arrangement diagrams</div>
+      <div class="pp-chart-grid">
+        ${methods.map(m => `
+          <div class="pp-chart-cell">
+            <div class="pp-chart-cap">${METHOD_LABELS[m]}</div>
+            <div class="pp-chart-score">Score ${resByMethod[m].score.toFixed(3)}${a.chosen===m ? ' &middot; Chosen' : ''}</div>
+            ${buildSpiderChartSvgPrint(a, m)}
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="pp-footer">Wheel Balance ${APP_VERSION} &middot; Peter Banks (Ions in Motion) &middot; generated ${APP_BUILD_DATE}</div>
     </div>
   `;
 
@@ -1367,7 +1455,7 @@ function renderResults(){
         ${ringMarkSvg(N, 34)}
         <div>
           <h1 class="app-title" style="font-size:19px;">${escapeHtml(a.name)}</h1>
-          <p class="app-sub">${SIZES[a.size].label} &middot; ${N} discs &middot; ${fmtDate(a.createdAt)}</p>
+          <p class="app-sub">${SIZES[a.size].label} &middot; ${N} paddles &middot; ${fmtDate(a.createdAt)}</p>
         </div>
       </header>
       <div class="share-menu-wrap">
@@ -1378,9 +1466,9 @@ function renderResults(){
               <div class="sm-label">Share this method</div>
               <div class="sm-sub">${METHOD_LABELS[method]} only</div>
             </div>
-            <div class="share-menu-row disabled" id="share-full">
+            <div class="share-menu-row" id="share-full">
               <div class="sm-label">Share full analysis</div>
-              <div class="sm-sub">Coming in the next update</div>
+              <div class="sm-sub">All 4 methods, comparison table + charts</div>
             </div>
           </div>
         ` : ''}
@@ -1424,7 +1512,7 @@ function renderResults(){
           <thead><tr>
             <th class="idx-col">Pos</th>
             <th>Angle</th>
-            <th>Disc</th>
+            <th>Paddle</th>
             <th class="weight-col">Weight</th>
           </tr></thead>
           <tbody>
@@ -1434,7 +1522,7 @@ function renderResults(){
               return `<tr>
                 <td class="idx-col">${pos+1}</td>
                 <td style="color:var(--text-faint);">${angle}°</td>
-                <td>${escapeHtml(disc.label) || `<span style="color:var(--text-faint);">Disc ${discIdx+1}</span>`}</td>
+                <td>${escapeHtml(disc.label) || `<span style="color:var(--text-faint);">Paddle ${discIdx+1}</span>`}</td>
                 <td class="weight-col" style="color:var(--data);">${disc.weight}</td>
               </tr>`;
             }).join('')}
@@ -1451,7 +1539,7 @@ function renderResults(){
       }
     </div>
 
-    <div class="footer">Disc Balance ${APP_VERSION} &middot; built ${APP_BUILD_DATE}</div>
+    <div class="footer">Wheel Balance ${APP_VERSION} &middot; built ${APP_BUILD_DATE}</div>
   `;
 
   app.querySelectorAll('[data-method]').forEach(el=>{
@@ -1476,8 +1564,8 @@ function renderResults(){
     };
     document.getElementById('share-full').onclick = ()=>{
       state.showShareMenu = false;
+      state.view = 'print-full';
       render();
-      showToast('Full-analysis sharing is coming in the next update');
     };
     // Tapping anywhere else closes the menu.
     setTimeout(()=>{
